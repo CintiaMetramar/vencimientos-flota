@@ -122,44 +122,79 @@ if uploaded_master and uploaded_weekly:
 
         # Convertir a datetime para lógica de semáforo
         df_final['Fecha de vencimiento'] = pd.to_datetime(df_final['Fecha de vencimiento'], errors='coerce')
-
-        # ==========================================
-        # 🚦 3. INFORME Y ALERTAS
-        # ==========================================
-        st.subheader("📊 Análisis de Vencimientos Próximos")
         
-        hoy = datetime.now()
-        rango_alerta = hoy + timedelta(days=30)
-        
-        # Filtro de interés: Vencidos o por vencer en 30 días
-        df_alertas = df_final[df_final['Fecha de vencimiento'] <= rango_alerta].copy()
+# ==========================================
+# 🚦 3. INFORME Y ALERTAS (CON TU MENSAJE ORIGINAL)
+# ==========================================
+st.subheader("📊 Análisis de Vencimientos Próximos")
 
-        if df_alertas.empty:
-            st.success("✅ Todo al día. No hay vencimientos en los próximos 30 días.")
+hoy = datetime.now()
+rango_alerta = hoy + timedelta(days=30)
+
+# Filtro de interés: Vencidos o por vencer en 30 días
+df_alertas = df_final[df_final['Fecha de vencimiento'] <= rango_alerta].copy()
+
+if df_alertas.empty:
+    st.success("✅ Todo al día. No hay vencimientos en los próximos 30 días.")
+else:
+    resumen = []
+    for _, row in df_alertas.iterrows():
+        fecha_venc = row['Fecha de vencimiento']
+        conductor = row.get('Conductor', 'Sin Asignar')
+        matricula = row.get('Matricula', 'S/M')
+        
+        # 1. Definir Semáforo
+        if pd.isna(fecha_venc): bola = "⚪"
+        elif fecha_venc < hoy: bola = "🔴 VENCIDO"
+        elif fecha_venc <= hoy + timedelta(days=7): bola = "🟡 URGENTE"
+        else: bola = "🟢 AVISAR"
+
+        fecha_str = fecha_venc.strftime('%d/%m/%Y') if pd.notna(fecha_venc) else "S/D"
+        
+        # 2. CONSTRUCCIÓN DEL MENSAJE (Tu formato exacto)
+        texto = (
+            f"🚨 *AVISO DE VENCIMIENTO* 🚨\n"
+            f"📌 Tipo: {row.get('Tipo','')}\n"
+            f"🏢 Empresa: {row.get('Empresa','')}\n"
+            f"👤 Conductor: {conductor}\n"
+            f"🚛 Vehículo: {row.get('Vehículo','')}\n"
+            f"🔖 Matrícula: {matricula}\n"
+            f"📅 Fecha: {fecha_str}\n"
+        )
+
+        if pd.notna(fecha_venc):
+            if fecha_venc < hoy:
+                texto += "⚠️ Este documento ya ha vencido. Por favor, si no lo has hecho ya, sube la documentación a la oficina para su actualización.\n"
+            else:
+                texto += "✅ Por favor, pase por taller a programar la *revisión Pre-ITV* o coordine con su responsable la cita para la *ITV/Tacógrafo*, Si llevas remolque, por favor comprueba la documentación. Las tractoras y remolques pueden aumentar su MMA, pedir en oficina la autorización.\n"
+
+        texto += "\n📩 Si ya no llevas este camión responde a este mensaje con la matrícula del camión que llevas actualmente."
+
+        # 3. Link de WhatsApp
+        wa_link = None
+        tel = str(row.get('Telefono', '')).replace(".0", "").strip()
+        if tel and tel != "nan" and tel != "":
+            tel_clean = "".join(filter(str.isdigit, tel))
+            if len(tel_clean) == 9: tel_clean = "34" + tel_clean
+            wa_link = f"https://wa.me/{tel_clean}?text={urllib.parse.quote(texto)}"
+
+        resumen.append({
+            "bola": bola, "Matricula": matricula, 
+            "Conductor": conductor, "Fecha_Str": fecha_str, "link": wa_link
+        })
+
+    # --- Muestra de la tabla en Streamlit ---
+    for r in resumen:
+        c1, c2, c3, c4, c5 = st.columns([1, 1, 2, 1, 1])
+        c1.write(r["bola"])
+        c2.write(r["Matricula"])
+        c3.write(r["Conductor"])
+        c4.write(r["Fecha_Str"])
+        if r["link"]: 
+            c5.link_button("📲 Enviar", r["link"])
         else:
-            resumen = []
-            for _, row in df_alertas.iterrows():
-                f = row['Fecha de vencimiento']
-                if pd.isna(f): bola = "⚪"
-                elif f < hoy: bola = "🔴 VENCIDO"
-                elif f <= hoy + timedelta(days=7): bola = "🟡 URGENTE"
-                else: bola = "🟢 AVISAR"
-
-                f_str = f.strftime('%d/%m/%Y') if pd.notna(f) else "S/D"
-                
-                # Link WhatsApp mejorado
-                wa_link = None
-                tel = str(row['Telefono']).replace(".0", "").strip()
-                if tel and tel != "nan":
-                    tel_clean = "".join(filter(str.isdigit, tel))
-                    if len(tel_clean) == 9: tel_clean = "34" + tel_clean
-                    msg = f"Hola {row['Conductor']}, te informamos que el vehículo {row['Matricula']} tiene un vencimiento el {f_str}."
-                    wa_link = f"https://wa.me/{tel_clean}?text={urllib.parse.quote(msg)}"
-
-                resumen.append({
-                    "bola": bola, "Matricula": row['Matricula'], 
-                    "Conductor": row['Conductor'], "Fecha_Str": f_str, "link": wa_link
-                })
+            c5.write("🚫 Sin Tel.")
+        st.divider()
 
             # Mostrar tabla visual
             for r in resumen:
@@ -187,3 +222,4 @@ if uploaded_master and uploaded_weekly:
 
     except Exception as e:
         st.error(f"⚠️ Error en el proceso: {e}")
+
